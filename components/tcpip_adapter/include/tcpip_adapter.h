@@ -81,7 +81,7 @@ typedef struct {
 
 typedef dhcps_lease_t tcpip_adapter_dhcps_lease_t;
 
-#if CONFIG_DHCP_STA_LIST 
+#if CONFIG_DHCP_STA_LIST
 typedef struct {
     uint8_t mac[6];
     ip4_addr_t ip;
@@ -112,6 +112,7 @@ typedef enum {
     TCPIP_ADAPTER_IF_ETH,         /**< ESP32 ethernet interface */
     TCPIP_ADAPTER_IF_MAX
 } tcpip_adapter_if_t;
+extern struct netif *esp_netif[TCPIP_ADAPTER_IF_MAX];
 
 /* status of DHCP client or DHCP server */
 typedef enum {
@@ -149,7 +150,7 @@ typedef struct tcpip_adapter_api_msg_s {
 } tcpip_adapter_api_msg_t;
 
 #define TCPIP_ADAPTER_TRHEAD_SAFE 1
-#define TCPIP_ADAPTER_IPC_LOCAL   0 
+#define TCPIP_ADAPTER_IPC_LOCAL   0
 #define TCPIP_ADAPTER_IPC_REMOTE  1
 
 #define TCPIP_ADAPTER_IPC_CALL(_if, _mac, _ip, _hostname, _fn) do {\
@@ -485,4 +486,3 @@ esp_err_t tcpip_adapter_get_hostname(tcpip_adapter_if_t tcpip_if, const char **h
 #endif
 
 #endif /*  _TCPIP_ADAPTER_H_ */
-

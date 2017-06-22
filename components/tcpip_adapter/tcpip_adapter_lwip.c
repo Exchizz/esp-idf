@@ -37,7 +37,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 
-static struct netif *esp_netif[TCPIP_ADAPTER_IF_MAX];
+struct netif *esp_netif[TCPIP_ADAPTER_IF_MAX];
 static tcpip_adapter_ip_info_t esp_ip[TCPIP_ADAPTER_IF_MAX];
 static tcpip_adapter_ip6_info_t esp_ip6[TCPIP_ADAPTER_IF_MAX];
 
@@ -664,7 +664,7 @@ static void tcpip_adapter_dhcpc_cb(struct netif *netif)
             ip_info = &esp_ip[TCPIP_ADAPTER_IF_STA];
         } else if(netif == esp_netif[TCPIP_ADAPTER_IF_ETH] ) {
             ip_info = &esp_ip[TCPIP_ADAPTER_IF_ETH];
-        } 
+        }
 
         //check whether IP is changed
         if ( !ip4_addr_cmp(ip_2_ip4(&netif->ip_addr), &ip_info->ip) ||

@@ -58,6 +58,26 @@ struct dhcp6;
 extern "C" {
 #endif
 
+/* custom */
+enum lwip_internal_netif_client_data_index
+{
+#if LWIP_DHCP
+   LWIP_NETIF_CLIENT_DATA_INDEX_DHCP,
+#endif
+#if LWIP_AUTOIP
+   LWIP_NETIF_CLIENT_DATA_INDEX_AUTOIP,
+#endif
+#if LWIP_IGMP
+   LWIP_NETIF_CLIENT_DATA_INDEX_IGMP,
+#endif
+#if LWIP_IPV6_MLD
+   LWIP_NETIF_CLIENT_DATA_INDEX_MLD6,
+#endif
+   LWIP_NETIF_CLIENT_DATA_INDEX_MAX
+};
+#define LWIP_NUM_NETIF_CLIENT_DATA            2
+
+/* end custom */
 /* Throughout this file, IP addresses are expected to be in
  * the same byte order as in IP_PCB. */
 
@@ -187,6 +207,10 @@ typedef void (*dhcp_event_fn)(void);
  *  The following fields should be filled in by the initialization
  *  function for the device driver: hwaddr_len, hwaddr[], mtu, flags */
 struct netif {
+
+  void* client_data[LWIP_NETIF_CLIENT_DATA_INDEX_MAX + LWIP_NUM_NETIF_CLIENT_DATA];
+
+
   /** pointer to next in linked list */
   struct netif *next;
 
@@ -248,9 +272,9 @@ struct netif {
   struct dhcp *dhcp;
 
 #if ESP_LWIP
-  struct udp_pcb *dhcps_pcb;	
+  struct udp_pcb *dhcps_pcb;
   dhcp_event_fn dhcp_event;
-#endif  
+#endif
 
 #endif /* LWIP_DHCP */
 
@@ -295,7 +319,7 @@ struct netif {
   char name[2];
   /** number of this interface */
   u8_t num;
-  
+
 #if MIB2_STATS
   /** link type (from "snmp_ifType" enum from snmp_mib2.h) */
   u8_t link_type;
