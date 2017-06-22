@@ -729,7 +729,7 @@
 #if (CLASSIC_BT_INCLUDED == TRUE)
 #define MAX_L2CAP_CHANNELS          8
 #else
-#define MAX_L2CAP_CHANNELS          2  //Not support to create l2cap channels in the BLE only mode in this bluedroid version(6.0)
+#define MAX_L2CAP_CHANNELS          MAX_ACL_CONNECTIONS  //This is used in the BLE client when start connected with the peer device
 #endif   ///CLASSIC_BT_INCLUDED == TRUE
 #endif
 
@@ -951,6 +951,13 @@
 
 #ifndef BLE_LLT_INCLUDED
 #define BLE_LLT_INCLUDED    TRUE
+#endif
+
+/* Added this marco to fixed the android 7.0 will lead to update connection parameters
+   collision when the slave sent the HCI_BLE_UPD_LL_CONN_PARAMS comment to the controller
+   request the master to update connection parameters directly. */
+#ifndef BLE_SLAVE_UPD_CONN_PARAMS
+#define BLE_SLAVE_UPD_CONN_PARAMS FALSE
 #endif
 
 #ifndef ATT_INCLUDED

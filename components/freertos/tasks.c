@@ -1515,13 +1515,11 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB, TaskFunction_t pxTaskCode
 /*-----------------------------------------------------------*/
 
 #if ( INCLUDE_uxTaskPriorityGet == 1 )
-/* ToDo: Make this multicore-compatible. */
 	UBaseType_t uxTaskPriorityGet( TaskHandle_t xTask )
 	{
 	TCB_t *pxTCB;
 	UBaseType_t uxReturn;
 
-		UNTESTED_FUNCTION();
 		taskENTER_CRITICAL(&xTaskQueueMutex);
 		{
 			/* If null is passed in here then we are changing the
@@ -1538,7 +1536,6 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB, TaskFunction_t pxTaskCode
 /*-----------------------------------------------------------*/
 
 #if ( INCLUDE_uxTaskPriorityGet == 1 )
-/* ToDo: Make this multicore-compatible. */
 	UBaseType_t uxTaskPriorityGetFromISR( TaskHandle_t xTask )
 	{
 	TCB_t *pxTCB;
@@ -2283,7 +2280,7 @@ UBaseType_t uxTaskGetNumberOfTasks( void )
 	UBaseType_t uxTask = 0, uxQueue = configMAX_PRIORITIES;
 
 		UNTESTED_FUNCTION();
-		vTaskSuspendAll(); //WARNING: This only suspends one CPU. ToDo: suspend others as well. Mux using taskQueueMutex maybe?
+		taskENTER_CRITICAL(&xTaskQueueMutex);
 		{
 			/* Is there a space in the array for each task in the system? */
 			if( uxArraySize >= uxCurrentNumberOfTasks )
@@ -2343,8 +2340,7 @@ UBaseType_t uxTaskGetNumberOfTasks( void )
 				mtCOVERAGE_TEST_MARKER();
 			}
 		}
-		( void ) xTaskResumeAll();
-
+		taskEXIT_CRITICAL(&xTaskQueueMutex);
 		return uxTask;
 	}
 
@@ -2679,11 +2675,8 @@ BaseType_t xSwitchRequired = pdFALSE;
 
 void vTaskSwitchContext( void )
 {
-	//Note: This can be called from interrupt context as well as from non-interrupt context (voluntary yield). The
-	//taskENTER_CRITICAL/taskEXIT_CRITICAL is modified to work in both scenarios for the ESP32, so we can freely use
-	//them here. However, in case of a voluntary yield, a nonvoluntary yield can still happen *during* the voluntary
-	//yield. Disabling interrupts using portENTER_CRITICAL_NESTED puts a stop to this and makes the rest of the code a 
-	//bit neater.
+	//Theoretically, this is only called from either the tick interrupt or the crosscore interrupt, so disabling
+	//interrupts shouldn't be necessary anymore. Still, for safety we'll leave it in for now.
 	int irqstate=portENTER_CRITICAL_NESTED();
 	tskTCB * pxTCB;
 	if( uxSchedulerSuspended[ xPortGetCoreID() ] != ( UBaseType_t ) pdFALSE )
@@ -2706,9 +2699,9 @@ void vTaskSwitchContext( void )
 				#endif
 
 				/* Add the amount of time the task has been running to the
-				accumulated	time so far.  The time the task started running was
+				accumulated time so far.  The time the task started running was
 				stored in ulTaskSwitchedInTime.  Note that there is no overflow
-				protection here	so count values are only valid until the timer
+				protection here so count values are only valid until the timer
 				overflows.  The guard against negative values is to protect
 				against suspect run time stat counter implementations - which
 				are provided by the application, not the kernel. */
@@ -2730,13 +2723,18 @@ void vTaskSwitchContext( void )
 		taskFIRST_CHECK_FOR_STACK_OVERFLOW();
 		taskSECOND_CHECK_FOR_STACK_OVERFLOW();
 
-		/* Select a new task to run using either the generic C or port
-		optimised asm code. */
-		/* ToDo: either get rid of port-changable task switching stuff, or put all this inside the
-		   taskSELECT_HIGHEST_PRIORITY_TASK macro, then replace this all with a taskSELECT_HIGHEST_PRIORITY_TASK(); 
-		   call */
+		/* Select a new task to run */
 		
-		taskENTER_CRITICAL_ISR(&xTaskQueueMutex);
+		/*
+		 We cannot do taskENTER_CRITICAL_ISR(&xTaskQueueMutex); here because it saves the interrupt context to the task tcb, and we're
+		 swapping that out here. Instead, we're going to do the work here ourselves. Because interrupts are already disabled, we only
+		 need to acquire the mutex.
+		*/
+#ifdef CONFIG_FREERTOS_PORTMUX_DEBUG
+		vPortCPUAcquireMutex( &xTaskQueueMutex, __FUNCTION__, __LINE__ );
+#else
+		vPortCPUAcquireMutex( &xTaskQueueMutex );
+#endif
 		
 		unsigned portBASE_TYPE foundNonExecutingWaiter = pdFALSE, ableToSchedule = pdFALSE, resetListHead;
 		portBASE_TYPE uxDynamicTopReady = uxTopReadyPriority;
@@ -2821,11 +2819,16 @@ void vTaskSwitchContext( void )
 			}
 			--uxDynamicTopReady;
 		}
-		taskEXIT_CRITICAL_ISR(&xTaskQueueMutex);
-
-		/* ToDo: taskSELECT_HIGHEST_PRIORITY_TASK replacement code ends here. */
 
 		traceTASK_SWITCHED_IN();
+
+		//Exit critical region manually as well: release the mux now, interrupts will be re-enabled when we
+		//exit the function.
+#ifdef CONFIG_FREERTOS_PORTMUX_DEBUG
+		vPortCPUReleaseMutex( &xTaskQueueMutex, function, line );
+#else
+		vPortCPUReleaseMutex( &xTaskQueueMutex );
+#endif
 
 #if CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK
 		vPortSetStackWatchpoint(pxCurrentTCB[xPortGetCoreID()]->pxStack);
@@ -4063,7 +4066,10 @@ TCB_t *pxTCB;
 /* Gotcha (which seems to be deliberate in FreeRTOS, according to
 http://www.freertos.org/FreeRTOS_Support_Forum_Archive/December_2012/freertos_PIC32_Bug_-_vTaskEnterCritical_6400806.html
 ) is that calling vTaskEnterCritical followed by vTaskExitCritical will leave the interrupts DISABLED when the scheduler
-is not running.  Re-enabling the scheduler will re-enable the interrupts instead. */
+is not running.  Re-enabling the scheduler will re-enable the interrupts instead. 
+
+For ESP32 FreeRTOS, vTaskEnterCritical implements both portENTER_CRITICAL and portENTER_CRITICAL_ISR.
+*/
 
 #if ( portCRITICAL_NESTING_IN_TCB == 1 )
 
@@ -4106,7 +4112,9 @@ is not running.  Re-enabling the scheduler will re-enable the interrupts instead
 			protect against recursive calls if the assert function also uses a
 			critical section. */
 
-			/* DISABLED in the esp32 port - because of SMP, vTaskEnterCritical
+			/* DISABLED in the esp32 port - because of SMP, For ESP32 
+			FreeRTOS, vTaskEnterCritical implements both 
+			portENTER_CRITICAL and portENTER_CRITICAL_ISR. vTaskEnterCritical
 			has to be used in way more places than before, and some are called
 			both from ISR as well as non-ISR code, thus we re-organized 
 			vTaskEnterCritical to also work in ISRs. */
@@ -4127,6 +4135,10 @@ is not running.  Re-enabling the scheduler will re-enable the interrupts instead
 #endif /* portCRITICAL_NESTING_IN_TCB */
 /*-----------------------------------------------------------*/
 
+
+/*
+For ESP32 FreeRTOS, vTaskExitCritical implements both portEXIT_CRITICAL and portEXIT_CRITICAL_ISR.
+*/
 #if ( portCRITICAL_NESTING_IN_TCB == 1 )
 
 #ifdef CONFIG_FREERTOS_PORTMUX_DEBUG
